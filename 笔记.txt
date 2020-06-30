@@ -1,0 +1,54 @@
+1、grub磁盘设备是从设备0编号分区是从1编号如（hd0,msdos1)指向第一个磁盘第一个分区
+2、安装grub在sda上，grub-install /dev/sda
+   安装时grub会默认将images放在boot下，可以通过--boot-directory指定存放目录
+3、引导可以使用boot直接引导也可以使用chainload跳转引导，通常使用--force选项忽略签名
+
+/etc/default/grub配置文件主要参数使用
+GRUB_DEFAULT 参数可以是个数字标志从0开始计数的菜单条目或者使用id标识（通常菜单上有--id标识）如果配置
+             为saved使用GRUB_SAVEDEFAULT选项
+GRUB_SAVEDEFAULT设置同时为true时则在选择一个条目后作为默认选项
+GRUB_TIMEOUT_STYLE menu、countdown、hidden靠esc选择
+GRUB_DISTRIBUTOR   用于菜单项显示信息（uos默认为版本号）
+GRUB_CMDLINE_LINUX   用于添加内核引导命令
+GRUB_CMDLINE_LINUX_DEFAULT 除非GRUB_DISABLE_RECOVERY被设置否则否则会存在默认和恢复条目，此选项命令仅仅别添加到默认选项
+GRUB_EARLY_INITRD_LINUX_CUSTOM
+GRUB_EARLY_INITRD_LINUX_STOCK  要从“ / boot”加载的以空格分隔的早期initrd映像的列表。 这是用于加载诸如CPU微代码，固件，ACPI表，加密密钥等之类的东西。 这些早期映像将按声明的顺序装入，并且所有这些映像均将在实际的功能initrd映像之前装入。
+GRUB_DISABLE_LINUX_UUID
+GRUB_DISABLE_LINUX_PARTUUID   不使用uuid或者partuuid
+GRUB_DISABLE_RECOVERY   不生产恢复模式菜单
+GRUB_GFXMODE     背景分辨率
+GRUB_VIDEO_BACKEND  用于支持图形视频
+GRUB_BACKGROUND 设置‘gfxterm’图形化终端上的分辨率的背景图像。这个选项的值必须是GRUB在启动时刻可读的一个文件，并且它必须以‘.png’，‘.tga’，‘.jpg’，或‘.jpeg’结尾
+
+GRUB_THEME 设置用于‘gfxterm’图形化终端的一个主题
+GRUB_GFXPAYLOAD_LINUX 置为‘text’来强制Linux内核以普通文本模式启动，设置为‘keep’来保留使用‘GRUB_GFXMODE’的图形模式设置
+GRUB_DISABLE_OS_PROBER 通常，grub-mkconfig会尝试使用外部的OS搜索程序，如果安装了的话，来发现安装在同一个系统中的其它操作系统，并为之产生合适的菜单项。设置这个选项为‘true’来禁止之
+GRUB_OS_PROBER_SKIP_LIST 忽略指定的文件系统格式为："4f234b9b-1e17-445d-b3c6-d81d005743d4@/dev/sda1"
+
+GRUB_DISABLE_SUBMENU 通常，grub-mkconfig将为版本号最高的内核生成顶层菜单项，并将所有其他找到的内核或用于恢复模式的替代菜单项放在子菜单中。 对于由os-prober返回的条目，第一个条目将放在顶层，而所有其他条目都将放在子菜单中。 如果此选项设置为“ y”，则会生成所有条目都位于顶层的平面菜单。
+GRUB_ENABLE_CRYPTODISK 如果设置为“ y”，则grub-mkconfig和grub-install将检查加密的磁盘并生成引导过程中访问它们所需的其他命令。
+GRUB_PRELOAD_MODULES  预加载模块如使用lvm
+GRUB_HIDDEN_TIMEOUT
+GRUB_HIDDEN_TIMEOUT_QUIET 引导超时时间显示设置
+
+查看字体lsfonts
+加载通过loadfont
+
+grub串口： 
+serial --unit=0（对应com1...n） --speed=9600
+terminal_input serial; terminal_output serial
+
+
+grub安装文件介绍
+boot.img 此映像是GRUB启动的第一部分。 它被写入主引导记录（MBR）或分区的引导扇区。 由于PC引导扇区为512字节，因此该映像的大小恰好为512字节。boot.img的唯一功能是从本地磁盘读取核心映像的第一个扇区并跳转到该扇区。 由于大小限制，boot.img无法理解任何文件系统结构，因此grub-install在安装GRUB时会将核心映像的第一个扇区的位置硬编码到boot.img中。
+
+diskboot.img   当从硬盘启动的时候作为第一个核心扇区被boot.img加载，主要作用是继续加载其他核心img
+cdboot.img      类似diskboot.img，只是这个是针对从cdrom启动
+pxeboot.img     从pxe启动
+lnxboot.img     作用是让grub的core.img看其来像linux内核，可以被LILO等引导程序引导。
+kernel.img      他的图片包含GRUB的基本运行时设施：设备和文件处理框架，环境变量，救援模式命令行解析器等。 它很少直接使用，而是内置在所有核心映像中。
+core.img      这是GRUB的核心形象。 它是由grub-mkimage程序根据内核映像和任意模块列表动态构建的。 通常，它包含足够的模块来访问/ boot / grub，并在运行时从文件系统加载其他所有内容（包括菜单处理，加载目标操作系统的能力等）。 模块化设计可以使核心映像保持较小，因为必须将其安装的磁盘区域通常只有32KB。
+*.mod     GRUB中的其他所有内容都位于可动态加载的模块中。 这些通常会自动加载，或者在必不可少的情况下内置到核心映像中，但也可以使用insmod命令手动加载（请参阅insmod）。
+总得来说 bios->boot.img->diskboot.img(硬盘其实是core.img第一个扇区内容，diskboot依旧没有文件系统功能依旧需要读取扇区)->core.img
+
+grub可以使用块指定文件如100+1表示读取第100块（不常用）
