@@ -52,3 +52,87 @@ core.img      这是GRUB的核心形象。 它是由grub-mkimage程序根据内�
 总得来说 bios->boot.img->diskboot.img(硬盘其实是core.img第一个扇区内容，diskboot依旧没有文件系统功能依旧需要读取扇区)->core.img
 
 grub可以使用块指定文件如100+1表示读取第100块（不常用）
+
+
+
+
+
+7/01 环境变量
+biosnum 当使用chinaload的时候是跟设备的drivernum
+check_signatures  决定是否对加载的文件进行签名认证
+chosen   保存上一次选择的菜单条目（结合GRUB_DEFAULT和GRUB_SAVEDEFAULT使用）
+cmdpath  被加载core.img绝对路径，通常是启动的时候自动设置，可以的打印出来一般第一个硬盘是hd0
+color_highlight、color_normal 显示高亮和正常的字体颜色
+config_directory、config_file   自动设置配置文件路径和名称（当前版本打印不出来，不支持？）
+debug 设置为all可以开启所有的debug输出
+default   设置默认启动项
+fallback    default启动失败会按照此变量启动
+gfxmode   分辨率默认是auto可以自己设置
+gfxpayload   一般不需要设置，GRUB_GFXPAYLOAD_LINUX会设置
+gfxterm_font  设置gfx图形界面字体uos上grub版本不可用打印不出来
+grub_cpu    自动被设置为cpu类型
+grub_platform   平台类型
+icondir     设置主题图标的目录
+lang、locald_dir 设置语言和其目录
+menu_color_highlight、menu_color_normal菜单字体颜色
+pager 设置为1表示输入屏幕满了暂停输出等待交互结合debug好用
+prefix grub目录绝对路径
+superusers   用户名称用于权限控制
+theme      主题路径
+
+
+grub一些环境变量保存在grubenv中，load_env、save_env可以加载保存
+
+
+menuentry title [--class=class …] [--users=users] [--unrestricted] [--hotkey=key] [--id=id] [arg …] { command; … }可以存在多个class
+submenu title [--class=class …] [--users=users] [--unrestricted] [--hotkey=key] [--id=id] { menu entries … } 类似menuentry
+
+serial 串口配置命令
+acpi 电源管理命令基本不使用
+authenticate  认证命令
+background_color   改变背景颜色没啥用的命令
+background_image   更改背景图片，只有输出是gfxterm才会更改
+badram  屏蔽部分内存
+blocklist  打印块设备号
+chainloader  加载分区特定扇区
+cmosclean  清除cmos特定位
+cmosdump     读取cmos
+cmostest  测试cmos特定位设置了返回0
+cmp  比较两个文件类似diff
+configfile  读取配置文件
+cpuid 仅仅使用x86，-l判断是否支持64位-p是否支持地址扩展也就是pae
+crc   hashsum --hash
+cryptomount   访问加密设备的命令
+date  就是date
+distrust pubkey_id 删除不信任密钥
+drivemap 设备映射-s -l查询-r删除
+eval  类似linux里的eval命令也就是宏替换再执行
+export  导出环境变量，导出的变量对使用configfile加载的辅助配置文件可见。
+gettext 将文件翻译成当前语言
+hashsum 计算hash值
+keystatus [--shift] [--ctrl] [--alt]   检查特定按键是否按下，若按下则是0否则返回1
+list_env [--file file]   列出环境变量
+load_env 加载环境变量
+loadfont 加载字体文件
+loopback 映射镜像可以查看镜像文件
+normal  默认读取grub.cfg配置文件,进入正常模式且显示启动菜单
+parttool  管理分区
+          子命令boot=true激活当前分区可引导，删除其他分区
+          type改变分区类型
+          hidden改变分区hidden标志位，布尔值
+password 为指定用户创建密码
+password_pbkdf2 使用的是hash加密后的密码
+probe 查找设备
+rdmsr《------》wrmsr 0xADDR [-v VARNAME]   读取特定地址寄存器值
+read 【var】读取一行
+regexp [--set [number:]var] regexp string   测试正则表达式regexp是否匹配字符串。 支持的正则表达式是POSIX.2扩展正则表达式。 如果给定了--set选项，则将匹配的第一个子表达式存储在变量var中。 子表达式按其开头括号从“ 1”开始编号。 数字默认为“ 1”。
+search [--file|--label|--fs-uuid] [--set [var]] [--no-floppy] name   搜索指定设备设置var变量
+ sendkey 模拟发送按键
+sleep
+source倒入文件
+test xxx  xxx结果为正退出码为0  
+set 《----》unset       
+
+grub-mkpasswd-pbkdf2   可以生成加密密码
+grub-probe 可用于读取文件系统信息如类型uuid等
+grub-script-check   配置文件检查工具
