@@ -1,0 +1,24 @@
+grub—util-exec-pipe
+1、创建子进城通过pipe将子进程标准输出绑定到fd上返回子进程pid
+
+grub_util_parse_config
+1、读取一行是否有之前环境变量里的GRUB_ENABLECRYPTODISK配置如果设置为y
+   则设置cfg->is_cryptodisk_enabled=1
+2、根据传入参数simple为1设置cfg->grub_distributor
+3、simple传入为0解析比较复杂稍后需要的时候再分析
+
+
+
+grub_util_load_config
+1、读取env里变量设置cfg对应的标志位
+2、接着调用grub—util-exec-pipe执行sh -c 配置文件
+3、打开grub—util-exec-pipe返回的pid调用grub_util_parse_config解析
+4、如果执行失败直接调用grub_util_parse_config设置simple为0进行详细解析
+
+grub_install_get_target
+1、打开modinfo.sh文件读取8191字节数据
+2、读取变量grub_modinfo_target_cpu\grub_modinfo_platform的值遍历
+   platforms匹配，匹配了返回索引值
+
+
+
