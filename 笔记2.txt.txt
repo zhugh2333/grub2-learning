@@ -22,3 +22,24 @@ grub_install_get_target
 
 
 
+
+安装镜像函数
+ grub_install_make_image_wrap->grub_install_make_image_wrap_file
+->grub_install_generate_image(diskboot.img kernel.img *.mod
+生成core.img 再写入diskboot.img、core.img )->grub_mkimage_load_image64 
+grub_install_copy_file拷贝boot.img到/boot下目录
+
+grub_util_sparc_setu
+
+
+
+
+
+
+
+
+
+
+
+
+
