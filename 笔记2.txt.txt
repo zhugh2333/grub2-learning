@@ -29,7 +29,9 @@ grub_install_get_target
 生成core.img 再写入diskboot.img、core.img )->grub_mkimage_load_image64 
 grub_install_copy_file拷贝boot.img到/boot下目录
 
-grub_util_sparc_setu
+grub_util_sparc_setu（核心函数）
+  1、在diskboot.img中记录core.img的扇区，然后将core.img前两个扇区写回磁盘
+  2、在boot.img中记录diskboot.img的初始扇区，然后写入boot.img写入MBR分区
 
 
 
