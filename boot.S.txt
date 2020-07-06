@@ -1,0 +1,404 @@
+基础知识：
+chs寻址：扇区（sector），柱面（cylinder），磁头（head），显然可以定位数据了，这就是数据定位(寻址)方式之一，CHS（也称3D），对早期的磁盘（上图所示）非常有效，知道用哪个磁头，读取哪个柱面上的第几扇区就OK了。CHS模式支持的硬盘容量有限，用8bit来存储磁头地址，用10bit来存储柱面地址，用6bit来存储扇区地址，而一个扇区共有512Byte，这样使用CHS寻址一块硬盘最大容量为256 * 1024 * 63 * 512B = 8064 MB(1MB = 1048576B)（若按1MB=1000000B来算就是8.4GB）
+
+lba寻址：LBA编址方式将CHS这种三维寻址方式转变为一维的线性寻址，它把硬盘所有的物理扇区的C/H/S编号通过一定的规则转变为一线性的编号。
+逻辑扇区号LBA的公式：
+LBA(逻辑扇区号)=磁头数 × 每磁道扇区数 × 当前所在柱面号 + 每磁道扇区数 × 当前所在磁头号 + 当前所在扇区号 – 1
+例如：CHS=0/0/1，则根据公式LBA=255 × 63 × 0 + 63 × 0 + 1 – 1= 0
+也就是说物理0柱面0磁头1扇区，是逻辑0扇区。
+
+https://blog.csdn.net/zztan/article/details/70861021
+
+
+
+
+
+https://blog.csdn.net/baidu_31504167/article/details/89081451
+https://blog.csdn.net/xianjian1990/article/details/78559879
+https://zhuanlan.zhihu.com/p/28300233
+
+
+
+
+
+
+
+
+boot.S源码分析
+globl _start, start;
+_start:
+start:
+	/*
+	 * _start is loaded at 0x7c00 and is jumped to with CS:IP 0:0x7c00
+	 */
+
+	/*
+	 * Beginning of the sector is compatible with the FAT/HPFS BIOS
+	 * parameter block.
+	 */
+
+jmp	LOCAL(after_BPB)
+
+
+LOCAL(after_BPB):
+
+/* general setup */
+	cli		/* we're not safe here! */  /*  disbale interrupt */
+
+        /*
+         * This is a workaround for buggy BIOSes which don't pass boot
+         * drive correctly. If GRUB is installed into a HDD, check if
+         * DL is masked correctly. If not, assume that the BIOS passed
+         * a bogus value and set DL to 0x80, since this is the only
+         * possible boot drive. If GRUB is installed into a floppy,
+         * this does nothing (only jump).
+         */
+	.org GRUB_BOOT_MACHINE_DRIVE_CHECK /* 0x66  汇编语言源程序中若没有ORG伪指令，则程序执行时，指令代码被放到自由内存空间的CS:0处；若有ORG伪指令，编译器则把其后的指令代码放到ORG伪指令指定的偏移地址。两个ORG伪指令之间，除了指令代码，若有自由空间，则用0填充。 */   
+
+
+
+boot_drive_check:
+        jmp     3f	/* grub-setup may overwrite this jump */
+        testb   $0x80, %dl
+        jz      2f
+3:
+	/* Ignore %dl different from 0-0x0f and 0x80-0x8f.  */
+	testb   $0x70, %dl
+	jz      1f
+2:	
+        movb    $0x80, %dl
+1:
+	/*
+	 * ljmp to the next instruction because some bogus BIOSes
+	 * jump to 07C0:0000 instead of 0000:7C00.
+	 */
+	ljmp	$0, $real_start
+
+
+/*jmp 3f一共两个字节，在grub安装到第一个扇区时有可能会被改写为两个nop指令，因此下面要对此做检查。
+dl寄存器被BIOS设置为引导设备号，一般为0x80~0xff，0x80号对应第一个硬盘。如果jmp 3f被改写了，肯定是从0x80号开始的设备启动的（下面的检查也是，都是一些BIOS版本造成的，具体为什么，协议里应该有写，懒着查了），如果不满足，则直接设置为0x80。
+再往下testb 0x70对引导设备号做进一步的检查，将其限制在0x00xf以及0x800x8f内，如果不在这个范围内，就将其设置为0x80。*/
+
+
+
+
+real_start:
+
+	/* set up %ds and %ss as offset from 0 */
+	xorw	%ax, %ax   /* 0 */
+	movw	%ax, %ds    /* ds设置为0  */
+	movw	%ax, %ss    /*  ss设置为0  */ 
+
+	/* set up the REAL stack */
+	movw	$GRUB_BOOT_MACHINE_STACK_SEG, %sp  /* 0x2000    此时栈设置为0:0x2000*/
+
+	sti		/* we're safe again */  /* enable interrupt  */
+
+	/*
+	 *  Check if we have a forced disk reference here
+	 */
+	movb   boot_drive, %al  /* 0xfff->al  */
+	cmpb	$0xff, %al        /* 看是否被改写          */
+	je	1f        
+	movb	%al, %dl          /* 被改写则重新设置引导设备设置dl值   */ 
+1:
+	/* save drive reference first thing! 入栈是因为后面中断可能会改写dx*/
+	pushw	%dx            
+
+
+/*下面一段决定是不是输出notification_string 
+*/
+#if defined(QUIET_BOOT) && !defined(HYBRID_BOOT)
+	/* is either shift key held down? */
+	movw	$(GRUB_MEMORY_MACHINE_BIOS_DATA_AREA_ADDR + 0x17), %bx
+	testb	$3, (%bx)
+	jz	2f
+#endif
+
+	/* print a notification message on the screen */
+	MSG(notification_string)
+
+/*
+mode:
+	.byte	0
+disk_address_packet:
+sectors:
+	.long	0
+heads:
+	.long	0
+cylinders:
+	.word	0
+sector_start:
+	.byte	0
+head_start:
+	.byte	0
+cylinder_start:
+	.word	0
+	/* more space... */
+	.endm
+
+	.file	"boot.S"
+
+	.text
+
+	/* Tell GAS to generate 16-bit instructions so that this code works
+	   in real mode. */
+	.code16
+
+*/
+
+
+
+
+
+
+2:
+	/* set %si to the disk address packet si指向结构体地址*/
+	movw	$disk_address_packet, %si          
+
+	/* check if LBA is supported */
+	movb	$0x41, %ah            /* 探测是否支持lba模式，使用13中断传入参数0x41、bx=0x55aa,返回如果支持cf标志被设置 */
+	movw	$0x55aa, %bx
+	int	$0x13
+
+	/*
+	 *  %dl may have been clobbered by INT 13, AH=41H.
+	 *  This happens, for example, with AST BIOS 1.04.
+	 */
+	popw	%dx
+	pushw	%dx
+
+/* CF=1时表示表示硬盘不支持LBA模式，直接跳转到LOCAL(chs_mode)，如果CF=0表示支持LBA，继续检查。返回值bx中存储了魔数0xaa55，如果不相等，也直接跳转到LOCAL(chs_mode)。cx中的值存储了硬盘访问的接口位图，当为偶数时，表示不支持LBA的某些api，此时也跳转到CHS */
+	/* use CHS if fails */
+	jc	LOCAL(chs_mode)
+	cmpw	$0xaa55, %bx
+	jne	LOCAL(chs_mode)
+
+	andw	$1, %cx
+	jz	LOCAL(chs_mode)
+
+
+LOCAL(lba_mode):
+	xorw	%ax, %ax
+	movw	%ax, 4(%si)  /*head 设置为0   */
+
+	incw	%ax
+	/* set the mode to non-zero */
+	movb	%al, -1(%si) /* 设置mode，lba是设置为1,chs设置为0  */
+
+	/* the blocks */
+	movw	%ax, 2(%si)  /* secoter高两个字节设置为0x0001，表示传输的扇区数*/
+
+	/* the size and the reserved byte */
+	movw	$0x0010, (%si)   /* secoter低两个字节设置为0x0010，表示数据块大小*/
+
+	/* the absolute address，从cylinders地址开始设置8(%si)和12(%si)，两者一起决定了读取的起始扇区，该值默认为0x1，也即读取第二个扇区 实际上会被修改，因为grub-install安装的时候会去根据diskboot实际扇区修改此值*/
+	movl	LOCAL(kernel_sector), %ebx
+	movl	%ebx, 8(%si)
+	movl	LOCAL(kernel_sector_high), %ebx
+	movl	%ebx, 12(%si)
+
+	/* the segment of buffer address */
+	movw	$GRUB_BOOT_MACHINE_BUFFER_SEG, 6(%si)  /* 设置heads高两个字节为0x7000，表示传输目的地址 */
+/*
+ * BIOS call "INT 0x13 Function 0x42" to read sectors from disk into memory
+ *	Call with	%ah = 0x42
+ *			%dl = drive number
+ *			%ds:%si = segment:offset of disk address packet
+ *	Return:
+ *			%al = 0x0 on success; err code on failure
+ */
+
+	movb	$0x42, %ah
+	int	$0x13
+
+	/* LBA read is not supported, so fallback to CHS. 如果返回标志位cf=1，则不支持LBA读，此时跳转到CHS模式LOCAL(chs_mode)。 */
+	jc	LOCAL(chs_mode)
+
+	movw	$GRUB_BOOT_MACHINE_BUFFER_SEG, %bx  /* bx=0x7000 */
+	jmp	LOCAL(copy_buffer)
+
+
+
+
+LOCAL(chs_mode):
+	/*
+	 *  Determine the hard disk geometry from the BIOS!
+	 *  We do this first, so that LS-120 IDE floppies work correctly.
+	 */
+	movb	$8, %ah
+	int	$0x13
+	jnc	LOCAL(final_init) /* CF = 0 if successful      = 1 if error 读取成功跳转 */
+
+	popw	%dx
+	/*
+	 *  The call failed, so maybe use the floppy probe instead.
+	 */
+	testb	%dl, %dl
+	jnb	LOCAL(floppy_probe)
+
+	/* Nope, we definitely have a hard disk, and we're screwed. */
+	ERR(hd_probe_error_string)
+
+LOCAL(final_init):  /* 保存中断读取的磁盘扇区数等数据  */
+	/* set the mode to zero 设置为0表示是chs模式*/
+	movzbl	%dh, %eax
+	movb	%ah, -1(%si)
+
+	/* save number of heads dh为中断保存的磁头数，保存在heads*/
+	incw	%ax  
+	movl	%eax, 4(%si)  
+
+	movzbw	%cl, %dx  /* cl的7-6保存了柱面高两位*/
+	shlw	$2, %dx    /* 左移两位，将dh设置为柱面高两位*/
+	movb	%ch, %al    /* ch保存柱面低八位*/
+	movb	%dh, %ah      /* 此时ax保存的就是柱面数*/
+
+	/* save number of cylinders */
+	incw	%ax
+	movw	%ax, 8(%si)    /* 此时ax保存的就是柱面数，将柱面数保存到结构体*/
+
+	movzbw	%dl, %ax   /* 驱动器数，*/
+	shrb	$2, %al        /* 右移两位     ？？？？？？？？*/
+
+	/* save number of sectors */
+	movl	%eax, (%si)
+
+setup_sectors:
+/*
+#ifdef HYBRID_BOOT
+	.org 0x1b0
+LOCAL(kernel_sector):
+	.long	1
+LOCAL(kernel_sector_high):
+	.long	0
+#endif
+	.org GRUB_BOOT_MACHINE_WINDOWS_NT_MAGIC
+nt_magic:
+	.long 0
+	.word 0
+*/
+
+
+	/* load logical sector start (top half) 将lba地址转换成chs地址然后调用中断读取数据*/
+	movl	LOCAL(kernel_sector_high), %eax
+
+	orl	%eax, %eax
+	jnz	LOCAL(geometry_error)
+
+	/* load logical sector start (bottom half) */
+	movl	LOCAL(kernel_sector), %eax
+
+	/* zero %edx */
+	xorl	%edx, %edx
+
+	/* divide by number of sectors (edx,eax)/src 商->eax 余数->edx    余数是一个磁道上第几个扇区*/
+	divl	(%si) 
+
+	/* save sector start ，磁道上起始扇区*/
+	movb	%dl, %cl 
+
+	xorw	%dx, %dx	/* zero %edx */
+	divl	 4(%si)		/* divide by number of heads ，表示哪个柱面，商是起始柱面，余数是起始磁头*/
+
+	/* do we need too many cylinders? */
+	cmpw	8(%si), %ax
+	jge	LOCAL(geometry_error)
+
+	/* normalize sector start (1-based) */
+	incb	%cl
+
+	/* low bits of cylinder start  ch是起始柱面低字节*/
+	movb	%al, %ch
+
+	/* high bits of cylinder start cl高两位设置为起始柱面高字节*/
+	xorb	%al, %al
+	shrw	$2, %ax
+	orb	%al, %cl 
+
+	/* save head start */
+	movb	%dl, %al
+
+	/* restore %dl */
+	popw	%dx
+
+	/* head start */
+	movb	%al, %dh
+
+/*
+ * BIOS call "INT 0x13 Function 0x2" to read sectors from disk into memory
+ *	Call with	%ah = 0x2
+ *			%al = number of sectors
+ *			%ch = cylinder
+ *			%cl = sector (bits 6-7 are high bits of "cylinder")
+ *			%dh = head
+ *			%dl = drive (0x80 for hard disk, 0x0 for floppy disk)
+ *			%es:%bx = segment:offset of buffer
+ *	Return:
+ *			%al = 0x0 on success; err code on failure
+ *  读取指定扇区数据,成功cf为0失败为1
+ */
+
+	movw	$GRUB_BOOT_MACHINE_BUFFER_SEG, %bx /* 0x7000    */
+	movw	%bx, %es	/* load %es segment with disk buffer */ /* 扇区缓冲 es:bx  */
+
+	xorw	%bx, %bx	/* %bx = 0, put it at 0 in the segment */
+	movw	$0x0201, %ax	/* function 2 */
+	int	$0x13
+
+	jc	LOCAL(read_error)
+
+	movw	%es, %bx
+
+
+
+
+
+
+LOCAL(copy_buffer):
+	/*
+	 * We need to save %cx and %si because the startup code in
+	 * kernel uses them without initializing them.
+	 首先通过pusha指令压入ax、cx、dx、bx、sp、bp、si和di寄存器，pushw压入ds段寄存器，以便恢复。
+然后向cx存入循环次数256。*/
+	pusha
+	pushw	%ds
+
+	movw	$0x100, %cx /* 一次传送2字节传送256次也就是512字节   */
+	movw	%bx, %ds /*ds==es=0x7000  */
+	xorw	%si, %si  /*set 0 */
+	movw	$GRUB_BOOT_MACHINE_KERNEL_ADDR, %di /* 0x800<<4 0x8000   src  ds:si    dst  es:di*/
+	movw	%si, %es
+
+	cld    /* 串操作增加2  */
+
+	rep
+	movsw
+
+	popw	%ds
+	popa
+
+	/* boot kernel */
+	jmp	*(LOCAL(kernel_address))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
