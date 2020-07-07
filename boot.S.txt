@@ -192,7 +192,24 @@ LOCAL(lba_mode):
 	/* the size and the reserved byte */
 	movw	$0x0010, (%si)   /* secoter低两个字节设置为0x0010，表示数据块大小*/
 
-	/* the absolute address，从cylinders地址开始设置8(%si)和12(%si)，两者一起决定了读取的起始扇区，该值默认为0x1，也即读取第二个扇区 实际上会被修改，因为grub-install安装的时候会去根据diskboot实际扇区修改此值*/
+	/* the absolute address，从cylinders地址开始设置8(%si)和12(%si)，两者一起决定了读取的起始扇区，该值默认为0x1，也即读取第二个扇区 实际上会被修改，因为grub-install安装的时候会去根据diskboot实际扇区修改此值util/setup.c:102:write_rootdev函数会更改0x5c位置的值
+/*
+#ifndef HYBRID_BOOT
+   189		.org GRUB_BOOT_MACHINE_KERNEL_SECTOR //0x5c
+   190	LOCAL(kernel_sector):
+   191		.long	1
+   192	LOCAL(kernel_sector_high):
+   193		.long	0
+   194	#endif
+   195	
+   196		.org GRUB_BOOT_MACHINE_BOOT_DRIVE
+   197	boot_drive:
+   198		.byte 0xff	/* the disk to load kernel from */
+   199				/* 0xff means use the boot drive */
+
+
+
+*/
 	movl	LOCAL(kernel_sector), %ebx
 	movl	%ebx, 8(%si)
 	movl	LOCAL(kernel_sector_high), %ebx
