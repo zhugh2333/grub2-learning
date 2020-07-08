@@ -1,0 +1,39 @@
+
+
+
+main
+1、grub_util_host_init->set_program_name 设置program_name=argv0，
+  如果argv0是/.libs/lt-xxx则直接取xxx为argv0保存
+2、参数解析
+3、create：grub_util_create_envblk_file
+   1、申请1024字节的空间buf
+   2、新建传参或者使用默认文件名.new文件
+   3、先向空间buf里拷贝签名：# GRUB Environment Block\n
+   4、格式化剩余空间为‘#’
+   5、将buf内容写入文件
+   6、将新文件重命名为传参或者使用默认文件名
+4、list：list_variables
+   ->open_envblk_file
+     1、打开文件不存在则创建
+     2、获取文件内容大小申请空间buf，读取全部内容，验证签名
+     3、申请envblk空间保存buf以及size
+   ->grub_envblk_iterate
+     1、根据=、\n解析出buf里的name和value对，打印出来
+    ->grub_envblk_close
+     1、释放之前申请的buf、envblk空间
+5、set：set_variables
+   ->open_envblk_file
+   ->grub_envblk_set
+     1、space保存是buf中其他数据之后的位置
+     2、查找是否存在同name的项，存在则修改其值
+     3、不存在同name的项，添加新的值
+   ->write_envblk_set
+   ->grub_envblk_close
+6、unset:unset_variables
+   ->grub_envblk_file
+   ->grub_envblk_delete
+     1、根据name匹配查找，找到了则将后面数据迁移覆盖此项
+   ->write_envblk
+   ->grub_envblk_close
+   
+         
