@@ -1,0 +1,8 @@
+main 
+1、grub_util_host_init
+   1、设置program_name=agrv0；此函数其他文件有分析
+2、打开参数指定的输入输出文件，没有则使用stdin、stdout
+3、调用grub_legacy_parse
+   1、跳过空白字符
+   2、遇到0或者#字符开头的，在行尾添加/n或者0
+   3、翻译一些command,读取旧的命令替换新的命令写入
