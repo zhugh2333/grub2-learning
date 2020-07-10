@@ -1,0 +1,258 @@
+int
+main (int argc, char *argv[])
+{
+
+//定义变量可以不管
+  struct arguments arguments = {
+    .count = 10000,
+    .buflen = 64,
+    .saltlen = 64
+  };
+  char *result, *ptr;
+  gcry_err_code_t gcry_err;
+  grub_uint8_t *buf, *salt;
+  char pass1[GRUB_AUTH_MAX_PASSLEN];
+  char pass2[GRUB_AUTH_MAX_PASSLEN];
+
+
+
+//此函数设置变量为程序名称，用处还没搞清楚
+  grub_util_host_init (&argc, &argv);
+
+//下面是解析参数设置arguments，没设置则使用初始默认值
+  /* Check for options. */
+  if (argp_parse (&argp, argc, argv, 0, 0, &arguments) != 0)
+    {
+      fprintf (stderr, "%s", _("Error in parsing command line arguments\n"));
+      exit(1);
+    }
+
+//分配空间
+  buf = xmalloc (arguments.buflen);
+  salt = xmalloc (arguments.saltlen);
+
+//两次读取密码存入对应的pass里，这个获取函数是直接读取键盘按键，不是调用库函数读取的，末尾看下这个函数具体实现  
+  printf ("%s", _("Enter password: "));
+  if (!grub_password_get (pass1, GRUB_AUTH_MAX_PASSLEN))
+    {
+      free (buf);
+      free (salt);
+      grub_util_error ("%s", _("failure to read password"));
+    }
+  printf ("%s", _("Reenter password: "));
+  if (!grub_password_get (pass2, GRUB_AUTH_MAX_PASSLEN))
+    {
+      free (buf);
+      free (salt);
+      grub_util_error ("%s", _("failure to read password"));
+    }
+
+//确认两次密码一致
+  if (strcmp (pass1, pass2) != 0)
+    {
+      memset (pass1, 0, sizeof (pass1));
+      memset (pass2, 0, sizeof (pass2));
+      free (buf);
+      free (salt);
+      grub_util_error ("%s", _("passwords don't match"));
+    }
+  memset (pass2, 0, sizeof (pass2));
+
+
+/*
+int
+grub_get_random (void *out, grub_size_t len)
+{
+  FILE *f;
+  size_t rd;
+
+  f = grub_util_fopen ("/dev/urandom", "rb");
+  if (!f)
+    return 1;
+  rd = fread (out, 1, len, f);
+  fclose (f);
+
+  if (rd != len)
+    return 1;
+  return 0;
+}
+*/
+
+
+  if (grub_get_random (salt, arguments.saltlen))
+    {
+      memset (pass1, 0, sizeof (pass1));
+      free (buf);
+      free (salt);
+      grub_util_error ("%s", _("couldn't retrieve random data for salt"));//读取失败这个函数会打印错误并且exit 1直接退出程序
+    }
+
+
+//核心加密函数
+  gcry_err = grub_crypto_pbkdf2 (GRUB_MD_SHA512,
+				 (grub_uint8_t *) pass1, strlen (pass1),
+				 salt, arguments.saltlen,
+				 arguments.count, buf, arguments.buflen);
+  memset (pass1, 0, sizeof (pass1));
+
+  if (gcry_err)
+    {
+      memset (buf, 0, arguments.buflen);
+      free (buf);
+      memset (salt, 0, arguments.saltlen);
+      free (salt);
+      grub_util_error (_("cryptographic error number %d"), gcry_err);
+    }
+
+  result = xmalloc (sizeof ("grub.pbkdf2.sha512.XXXXXXXXXXXXXXXXXXX.S.S")
+		    + arguments.buflen * 2 + arguments.saltlen * 2);
+  ptr = result;
+//添加前导字符
+  memcpy (ptr, "grub.pbkdf2.sha512.", sizeof ("grub.pbkdf2.sha512.") - 1);
+  ptr += sizeof ("grub.pbkdf2.sha512.") - 1;
+//写入count  
+  grub_snprintf (ptr, sizeof ("XXXXXXXXXXXXXXXXXXX"), "%d", arguments.count);
+  
+  ptr += strlen (ptr);
+  *ptr++ = '.';
+  
+  hexify (ptr, salt, arguments.saltlen);
+  
+  ptr += arguments.saltlen * 2;
+  
+  *ptr++ = '.';
+  
+//hexify对位进行某种变换，没看懂源码如下
+/*
+static void
+hexify (char *hex, grub_uint8_t *bin, grub_size_t n)
+{
+  while (n--)
+    {
+      if (((*bin & 0xf0) >> 4) < 10)
+	*hex = ((*bin & 0xf0) >> 4) + '0';
+      else
+	*hex = ((*bin & 0xf0) >> 4) + 'A' - 10;
+      hex++;
+
+      if ((*bin & 0xf) < 10)
+	*hex = (*bin & 0xf) + '0';
+      else
+	*hex = (*bin & 0xf) + 'A' - 10;
+      hex++;
+      bin++;
+    }
+  *hex = 0;
+}
+
+*/
+  hexify (ptr, buf, arguments.buflen);
+  ptr += arguments.buflen * 2;// 在hexify函数里会倍增，所以ptr需要移动两倍长度
+  *ptr = '\0';
+
+  printf (_("PBKDF2 hash of your password is %s\n"), result);
+  memset (buf, 0, arguments.buflen);
+  free (buf);
+  memset (salt, 0, arguments.saltlen);
+  free (salt);
+
+  return 0;
+}
+
+
+
+
+加密函数分析
+grub_crypto_pbkdf2 (const struct gcry_md_spec *md,
+		    const grub_uint8_t *P, grub_size_t Plen,
+		    const grub_uint8_t *S, grub_size_t Slen,
+		    unsigned int c,
+		    grub_uint8_t *DK, grub_size_t dkLen)
+{
+  unsigned int hLen = md->mdlen;
+  grub_uint8_t U[GRUB_CRYPTO_MAX_MDLEN];
+  grub_uint8_t T[GRUB_CRYPTO_MAX_MDLEN];
+  unsigned int u;
+  unsigned int l;
+  unsigned int r;
+  unsigned int i;
+  unsigned int k;
+  gcry_err_code_t rc;
+  grub_uint8_t *tmp;
+  grub_size_t tmplen = Slen + 4;
+
+  if (md->mdlen > GRUB_CRYPTO_MAX_MDLEN || md->mdlen == 0)
+    return GPG_ERR_INV_ARG;
+
+  if (c == 0)
+    return GPG_ERR_INV_ARG;
+
+  if (dkLen == 0)
+    return GPG_ERR_INV_ARG;
+
+  if (dkLen > 4294967295U)
+    return GPG_ERR_INV_ARG;
+
+//以上是参数检查，hLen=64
+
+
+  l = ((dkLen - 1) / hLen) + 1;
+  r = dkLen - (l - 1) * hLen;
+
+  tmp = grub_malloc (tmplen);// tmplen = Slen + 4;
+  if (tmp == NULL)
+    return GPG_ERR_OUT_OF_MEMORY;
+
+  grub_memcpy (tmp, S, Slen);
+
+  for (i = 1; i - 1 < l; i++)
+    {
+      grub_memset (T, 0, hLen);
+
+      for (u = 0; u < c; u++)
+	{
+	  if (u == 0)
+	    {
+	      tmp[Slen + 0] = (i & 0xff000000) >> 24;
+	      tmp[Slen + 1] = (i & 0x00ff0000) >> 16;
+	      tmp[Slen + 2] = (i & 0x0000ff00) >> 8;
+	      tmp[Slen + 3] = (i & 0x000000ff) >> 0;
+
+	      rc = grub_crypto_hmac_buffer (md, P, Plen, tmp, tmplen, U);//利用md接口进行某种位变换，这里没有继续深入
+	    }
+	  else
+	    rc = grub_crypto_hmac_buffer (md, P, Plen, U, hLen, U);
+
+	  if (rc != GPG_ERR_NO_ERROR)
+	    {
+	      grub_free (tmp);
+	      return rc;
+	    }
+
+	  for (k = 0; k < hLen; k++)
+	    T[k] ^= U[k];
+	}
+
+      grub_memcpy (DK + (i - 1) * hLen, T, i == l ? r : hLen);
+    }
+
+  grub_free (tmp);
+
+  return GPG_ERR_NO_ERROR;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

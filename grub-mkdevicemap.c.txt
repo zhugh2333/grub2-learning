@@ -1,0 +1,6 @@
+main
+1、while循环进行参数解析
+2、调用make_device_map->grub_util_iterate_devices
+   1、遍历/dev/disk/by-id目录读取设备名称保存在dev里，此结构保存/dev/disk/by-id、里的路径和实际路径也就类似/dev/sda
+   2、检测设备是否可读，可读取则将设备名称加入链表seen中保存
+   3、直接查找/dev/目录下是否存在hd、ad、rwd、wd、rwd、dmraid等各种类型的设备如果存在则写入device.map，写入规则是hdx /dev/xxx
