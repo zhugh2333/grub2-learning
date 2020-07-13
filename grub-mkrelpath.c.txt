@@ -1,0 +1,7 @@
+main
+1、参数校验
+2、grub_make_system_path_relative_to_its_root进行核心工作(grub-core/osdep/unix/relpath.c)
+  1、grub_canonicalize_file_name
+     1、获取指定路径的绝对路径，失败则报错退出
+     2、获取跟文件所在的根文件系统
+     3、返回查找到的grub的根文件系统（linux是调用grub_make_system_path_relative_to_its_root(mountinfo获取)，如果不是linux则通过stat计算）
