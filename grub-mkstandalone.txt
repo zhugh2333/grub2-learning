@@ -1,0 +1,110 @@
+int
+main (int argc, char *argv[])
+{
+  const char *pkglibdir;
+  int i;
+//设置程序名称变量
+  grub_util_host_init (&argc, &argv);
+//设置allow_fd_syncs=0  
+  grub_util_disable_fd_syncs ();
+
+  files = xmalloc ((argc + 1) * sizeof (files[0]));
+
+  argp_parse (&argp, argc, argv, 0, 0, 0);
+
+// /usr/local/lib/grub
+  pkglibdir = grub_util_get_pkglibdir ();
+
+
+  if (!output_image)
+    grub_util_error ("%s", _("output file must be specified"));
+
+  if (!format)
+    grub_util_error ("%s", _("Target format not specified (use the -O option)."));
+
+// 参数指定grub_install_source_directory，默认是/usr/local/lib/grub,下面函数做的就是默认的时候拼接
+  if (!grub_install_source_directory)
+    grub_install_source_directory = grub_util_path_concat (2, pkglibdir,
+grub_util_get_target_dirname (format));
+
+
+//  读取modinfo.sh获取平台信息
+  enum grub_install_plat plat = grub_install_get_target (grub_install_source_directory);
+
+
+// 新建/tmp/grub.xxxxx
+  char *memdisk_dir = grub_util_make_temporary_dir ();
+
+//拼接字符串/tmp/grub.xxxxx/boot/grub
+  char *boot_grub = grub_util_path_concat (3, memdisk_dir, "boot", "grub");
+
+// grub_install_copy_files函数作用是复制.mod到目的目录，拷贝mo文件、thems、fonts文件
+  grub_install_copy_files (grub_install_source_directory,
+			   boot_grub, plat);
+
+  char *memdisk_img = grub_util_make_temporary_file ();
+
+  memdisk = grub_util_fopen (memdisk_img, "wb");
+
+  add_tar_file (memdisk_dir, "");
+  for (i = 0; i < nfiles; i++)
+    {
+      char *eq = grub_strchr (files[i], '=');
+      char *from, *to;
+      if (!eq)
+	{
+	  from = files[i];
+	  to = files[i];
+	}
+      else
+	{
+	  *eq = '\0';
+	  to = files[i];
+	  from = eq + 1;
+	}
+      while (*to == '/')
+	to++;
+      add_tar_file (from, to);
+    }
+  write_zeros (512);
+
+  fclose (memdisk);
+
+  grub_util_unlink_recursive (memdisk_dir);
+
+  grub_install_push_module ("memdisk");
+  grub_install_push_module ("tar");
+
+// 制作core.img.后面分析此函数
+  grub_install_make_image_wrap (grub_install_source_directory,
+				"(memdisk)/boot/grub", output_image,
+				memdisk_img, NULL,
+				grub_util_get_target_name (format), 0);
+
+  grub_util_unlink (memdisk_img);
+  return 0;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+grub_install_make_image_wrap
+
+
+
+
+
+
+
+
+

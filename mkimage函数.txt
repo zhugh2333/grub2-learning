@@ -1,0 +1,37 @@
+函数详解
+grub_install_generate_image
+
+1、根据传入的mod参数解析出mod的依赖，模块路径存入path_list
+2、如果指定了publiks、memdisk_path、config_path、prefix、path_list计算总模块加上模块头占用空间大小
+3、读取kernel_img，根据PLATFORM_FLAGS_MODULES_BEFORE_KERNEL标志位找出模块相对于空间初始位置偏移
+4、在偏移位置填充struct grub_module_info32  modinfo
+5、根据path_list初始化struct grub_module_header header，接着加载模块
+6、如果指定了memdisk_path则加载memdisk_path路径的模块
+7、config_path如第6步,prefix指向的字符串直接拷贝，这两项只是改变了head头里的type结构
+8、压缩得到的core.img镜像
+
+
+grub_install_make_image_wrap_file(char *dir,char *prefix,FILE*fp, char *outname,char*memdisk_path,char*config_path,char*mkimage_target,int note)
+1、根据mkimage_target获取tgt
+2、调用grub_install_generate_image
+
+
+
+
+
+grub_install_make_image_wrap(char *dir ,char *prefix,char*outname,char*memdisk_path char *config_path char*mkimage_target,int note)
+	{
+513	  FILE *fp;
+514	
+515	  fp = grub_util_fopen (outname, "wb");
+516	  if (! fp)
+517	    grub_util_error (_("cannot open `%s': %s"), outname,
+518			     strerror (errno));
+519	  grub_install_make_image_wrap_file (dir, prefix, fp, outname,
+(gdb) 
+520					     memdisk_path, config_path,
+521					     mkimage_target, note);
+522	  grub_util_file_sync (fp);
+523	  fclose (fp);
+524	}
+525	
