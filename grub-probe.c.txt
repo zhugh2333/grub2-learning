@@ -1,0 +1,59 @@
+map {
+    char *drive
+    char *device
+    int  device_map
+}
+
+
+main
+1、参数解析
+2、grub_util_biosdisk_init 
+   1、调用read_device_map将device.map文件内容读取到map中保存
+   2、将grub_util_biosdisk_dev注册到grub_disk_dev_list
+   3、调用probe根据传入的参数是根据路径解析还是设备名称解析文件系统类型
+
+
+grub_guess_root_devices（char *dir_in）
+1、调用grub_find_root_devices_from_mountinfo查找设备(通过mountinfo比对路径名称获取设备名称)
+2、如果grub_find_root_devices_from_mountinfo没找到则通过stat读取文件的st.st_dev然后调用grub_find_device（“/dev”,dev）查找
+
+
+
+probe (path, device_names , delim )
+1、如果path非空，根据path调用grub_guess_root_devices获取设备名称
+2、调用grub_util_get_grub_dev获取分区在bios名称存入drives_names如（hd0,mdos5）
+3、使用drives_names通过grub_device_open获取dev
+4、使用dev通过grub_util_probe获取fs，打印fs->name
+5、函数返回
+
+
+grub_disk_open(char*name)
+1、遍历grub_disk_dev_list，调用grub_disk_dev_list->open打开没有失败的一项
+2、在disk中保存搜索到的项
+3、调用grub_partition_probe获取partition信息保存在disk中
+4、返回disk
+
+grub_device_open
+1、申请dev空间，调用grub_disk_open获取disk初始化dev
+2、返回dev
+
+
+
+grub_partition_probe
+1、遍历grub_partition_map_list
+2、
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
