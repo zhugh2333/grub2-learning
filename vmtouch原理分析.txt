@@ -1,0 +1,115 @@
+基础知识：
+进程调用mmap()时，只是在进程空间内新增了一块相应大小的缓冲区，并设置了相应的访问标识，但并没有建立进程空间到物理页面的映射。因此，第一次访问该空间时，会引发一个缺页异常，
+为啥会强调第一次呢，因为对于映射普通文件情况，缺页异常处理程序首先会在page cache中根据address_space以及数据偏移量寻找相应的页面。如果没有找到，则说明文件
+数据还没有读入内存，处理程序会从磁盘读入相应的页面，并返回相应地址，同时，进程页表也会更新，注意此时此文件会被加入到page cache里，知道这些后下面代码好理解了
+
+
+
+先明白两个函数：
+int mincore(void *addr, size_t length, unsigned char *vec);
+man手册 ：mincore() returns a vector that indicates whether pages of the calling
+       process's virtual memory are resident in core (RAM), and so will not cause a
+       disk access (page fault) if referenced.  The kernel returns residency
+       information about the pages starting at the address addr, and continuing for
+       length bytes
+pagecache会在内存严重不足的被释放的情况
+
+
+int posix_fadvise(int fd, off_t offset, off_t len, int advice);
+Programs can use posix_fadvise() to announce an intention to access file data in a specific pattern 
+in the future, thus allowing the kernel to perform appropriate optimizations.
+The advice applies to a (not necessarily existent) region starting at offset
+ and extending for len bytes (or until the end of the file if len is 0) within the 
+file referred to by fd. The advice is not binding; it merely constitutes an expectation on behalf of the application.
+
+POSIX_FADV_DONTNEED ：内核从页缓冲中删除指定的范围
+也许会遇到执行了但是内存没有释放的情况：因为POSIX_FADV_DONTNEED在有脏页的情况下调用的过程是提交脏页回写请求不是等回写完成返回，
+所以脏也刷新慢的话就会出现pagecache内存不释放的情况，比较极端一般脏也回写速度很快
+
+
+
+
+
+
+
+void vmtouch_file(char *path) {
+
+  变量参数定义，不是理解重点.......
+//映射了但是还没访问哦，此时物理页面不知道在不在，之所以说不知道在不在，是因为如果存在其他进程访问过此文件，加载此文件的物理页面还在page cache缓存中，如果之前谁都没访问过，那文件只是在磁盘中
+反正这个函数执行完没有真正完成映射
+  mem = mmap(NULL, len_of_range, PROT_READ, MAP_SHARED, fd, offset);
+ 
+  
+  if (mem == MAP_FAILED) {
+    warning("unable to mmap file %s (%s), skipping", path, strerror(errno));
+    goto bail;
+  }
+
+  if (!aligned_p(mem)) fatal("mmap(%s) wasn't page aligned", path);
+
+  pages_in_range = bytes2pages(len_of_range);
+
+  total_pages += pages_in_range;
+
+ 
+  //针对-e选项，
+  if (o_evict) {
+    if (o_verbose) printf("Evicting %s\n", path);
+    if (posix_fadvise(fd, offset, len_of_range, POSIX_FADV_DONTNEED))
+      warning("unable to posix_fadvise file %s (%s)", path, strerror(errno));
+
+  } else {
+    double last_chart_print_time=0.0, temp_time;
+    char *mincore_array = malloc(pages_in_range);
+    if (mincore_array == NULL) fatal("Failed to allocate memory for mincore array (%s)", strerror(errno));
+
+    // 3rd arg to mincore is char* on BSD and unsigned char* on linux
+    if (mincore(mem, len_of_range, (void*)mincore_array)) fatal("mincore %s (%s)", path, strerror(errno));//判断文件对应的页面在不在内存，从代码流程看也就是看pagecache里是否有对应的文件页面
+    for (i=0; i<pages_in_range; i++) {
+      if (is_mincore_page_resident(mincore_array[i])) {
+        total_pages_in_core++;
+      }
+    }
+
+ ........省略不是很重要的代码不管，其他mlock啊都是api没啥含义
+
+//-t参数，上面说过写时会触发缺页异常然后搜索pagecache或者access disk加载对应文件，所以 junk_counter += ((char*)mem)[i*pagesize]; 这一步搞定文件对应的所有页都被加载进内存
+    if (o_touch) {
+      for (i=0; i<pages_in_range; i++) {
+        junk_counter += ((char*)mem)[i*pagesize];
+        mincore_array[i] = 1;
+
+        if (o_verbose) {
+          temp_time = gettimeofday_as_double();
+
+          if (temp_time > (last_chart_print_time+CHART_UPDATE_INTERVAL)) {
+            last_chart_print_time = temp_time;
+            print_page_residency_chart(stdout, mincore_array, pages_in_range);
+          }
+        }
+      }
+    }
+
+    if (o_verbose) {
+      print_page_residency_chart(stdout, mincore_array, pages_in_range);
+      printf("\n");
+    }
+
+    free(mincore_array);
+  }
+
+  if (o_lock) {
+    if (mlock(mem, len_of_range))
+      fatal("mlock: %s (%s)", path, strerror(errno));
+  }
+
+  bail:
+
+  if (!o_lock && !o_lockall && mem) {
+    if (munmap(mem, len_of_range)) warning("unable to munmap file %s (%s)", path, strerror(errno));
+  }
+
+  if (fd != -1) {
+    close(fd);
+  }
+}
